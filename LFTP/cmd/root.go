@@ -15,15 +15,21 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"net"
 	"os"
+	"time"
 
+	"github.com/liuyh73/ftp/LFTP/config"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var cfgFile string
+var host string
+var port string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -90,4 +96,31 @@ func checkErr(err error) {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+}
+
+func connectToServer() bool {
+	fmt.Println("Connecting...")
+	// 获取raddr
+	serverAddr := host + ":" + port
+	raddr, err := net.ResolveUDPAddr("udp", serverAddr)
+	checkErr(err)
+	// 获取客户端套接字
+	clientSocket, err := net.DialUDP("udp", nil, raddr)
+	checkErr(err)
+	defer clientSocket.Close()
+	// 设置等待响应时间
+	clientSocket.SetDeadline(time.Now().Add(5 * time.Second))
+	// 向服务器发送请求
+	_, err = clientSocket.Write([]byte("conn: "))
+	checkErr(err)
+	// 读取服务器传回的数据
+	res := make([]byte, config.SERVER_RECV_LEN)
+	_, err = clientSocket.Read(res)
+	checkErr(err)
+	resStr := string(res[:bytes.IndexByte(res, 0)])
+	fmt.Println(resStr)
+	if resStr == "Connected!" {
+		return true
+	}
+	return false
 }

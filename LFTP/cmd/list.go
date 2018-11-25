@@ -25,8 +25,6 @@ import (
 )
 
 var limit int
-var host string
-var port string
 
 // listCmd represents the list command
 var listCmd = &cobra.Command{
@@ -34,20 +32,24 @@ var listCmd = &cobra.Command{
 	Short: "list command helps us to get the file list from server.",
 	Long:  `We can use LFTP list to get the file list from server.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if !connectToServer() {
+			fmt.Println("You don't connect to the server.")
+			return
+		}
 		// 方法一：
 		// 获取clientSocket可以使用net.Dial("udp", address string)
 		// serverAddr := host + ":" + port
 		// clientSocket, err := net.Dial("udp", serverAddr)
 		// 方法二：
 		serverAddr := host + ":" + port
-		udpAddr, err := net.ResolveUDPAddr("udp", serverAddr)
+		raddr, err := net.ResolveUDPAddr("udp", serverAddr)
 		checkErr(err)
 		// net.DialUDP("udp", localAddr *UDPAddr, remoteAddr *UDPAddr)
-		clientSocket, err := net.DialUDP("udp", nil, udpAddr)
+		clientSocket, err := net.DialUDP("udp", nil, raddr)
 		checkErr(err)
 		defer clientSocket.Close()
 		clientSocket.SetDeadline(time.Now().Add(5 * time.Second))
-		_, err = clientSocket.Write([]byte("list " + strconv.Itoa(limit) + " files"))
+		_, err = clientSocket.Write([]byte("list: " + strconv.Itoa(limit) + " files"))
 		checkErr(err)
 		data := make([]byte, 1024)
 		// lenth, err = clientSocket.Read(data)
@@ -71,6 +73,6 @@ func init() {
 	// is called directly, e.g.:
 	// listCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	listCmd.Flags().IntVarP(&limit, "limit", "l", 10, "get the list with a number of `limit` files.")
-	listCmd.Flags().StringVarP(&host, "host", "h", config.SERVER_IP, "Server host")
-	listCmd.Flags().StringVarP(&port, "port", "p", config.SERVER_PORT, "Server host")
+	listCmd.Flags().StringVarP(&host, "host", "H", config.SERVER_IP, "Server host")
+	listCmd.Flags().StringVarP(&port, "port", "P", config.SERVER_PORT, "Server port")
 }
