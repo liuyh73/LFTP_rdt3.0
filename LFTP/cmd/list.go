@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/liuyh73/ftp/LFTP/config"
+	"github.com/liuyh73/LFTP/LFTP/config"
 	"github.com/spf13/cobra"
 )
 

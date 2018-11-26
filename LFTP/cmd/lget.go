@@ -15,13 +15,14 @@
 package cmd
 
 import (
-	"bytes"
+	"github.com/liuyh73/LFTP/LFTP/models"
+	"strconv"
 	"fmt"
 	"net"
 	"os"
 	"time"
 
-	"github.com/liuyh73/ftp/LFTP/config"
+	"github.com/liuyh73/LFTP/LFTP/config"
 	"github.com/spf13/cobra"
 )
 
@@ -33,10 +34,11 @@ var lgetCmd = &cobra.Command{
 	Short: "lget command helps us to get a file from server.",
 	Long:  `We can use LFTP lget <file> to get a file from server.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("lget called")
 		if !connectToServer() {
 			return
 		}
+		lgetPacket := models.NewPacket(byte(0), byte(0), byte(0), []byte("lget: " + lgetFile))
+		fmt.Println(lgetPacket)
 		fmt.Println(lgetFile)
 		// 获取raddr
 		serverAddr := host + ":" + port
@@ -50,24 +52,26 @@ var lgetCmd = &cobra.Command{
 		// 设置等待响应时间
 		clientSocket.SetDeadline(time.Now().Add(10 * time.Second))
 		// 向服务器发送请求
-		_, err = clientSocket.Write([]byte("lget: " + lgetFile))
+		_, err = clientSocket.Write(lgetPacket.ToBytes())
 		checkErr(err)
 		// 创建文件句柄
 		outputFile, err := os.OpenFile(lgetFile, os.O_CREATE|os.O_TRUNC, 0600)
 		checkErr(err)
 		for {
-			res := make([]byte, config.SERVER_RECV_LEN)
+			buf := make([]byte, config.CLIENT_RECV_LEN)
+			packet := &models.Packet{}
 			// lenth, err = clientSocket.Read(res)
 			// length, remoteAddr *UDPAddr, err = clientSocket.ReadFromUDP(res)
-			_, err = clientSocket.Read(res)
+			_, err = clientSocket.Read(buf)
 			checkErr(err)
-			var resStr string
-			resStr = string(bytes.TrimRight(res[:], "\x00"))
+			packet.FromBytes(buf)
 			//fmt.Println(resStr)
-			if resStr == "end" {
+			if packet.Finished == byte(1) {
+				fmt.Println("end")
 				break
 			}
-			outputFile.Write(res)
+			length, err := outputFile.Write(packet.Data)
+			fmt.Println("Read lenth: "+strconv.Itoa(length))
 			checkErr(err)
 		}
 		fmt.Printf("Finished to download the file %s.\n", lgetFile)

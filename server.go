@@ -1,19 +1,21 @@
 package main
 
 import (
-	"bytes"
+	"github.com/liuyh73/LFTP/LFTP/models"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
 	"strings"
+	"strconv"
 )
 
 const (
 	server_ip       = "127.0.0.1"
 	server_port     = "8808"
-	server_recv_len = 200
+	server_send_len = 1993
+	server_recv_len = 2000
 )
 
 func checkErr(err error) {
@@ -32,12 +34,14 @@ func main() {
 	defer serverSocket.Close()
 
 	for {
-		data := make([]byte, server_recv_len)
-		_, clientUDPAddr, err := serverSocket.ReadFromUDP(data)
+		buf := make([]byte, server_recv_len)
+		_, clientUDPAddr, err := serverSocket.ReadFromUDP(buf)
 
 		checkErr(err)
-
-		dataStr := string(data[:bytes.IndexByte(data, 0)])
+		packet := &models.Packet{}
+		packet.FromBytes(buf)
+		fmt.Println(packet)
+		dataStr := string(packet.Data)
 		fmt.Println("Received:", dataStr)
 		if strings.Split(dataStr, ": ")[0] == "conn" {
 			handleConn(serverSocket, clientUDPAddr)
@@ -52,7 +56,8 @@ func main() {
 }
 
 func handleConn(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr) {
-	_, err := serverSocket.WriteToUDP([]byte("Connected!"), clientUDPAddr)
+	packet := models.NewPacket(byte(0), byte(0), byte(0), []byte("Connected!"))
+	_, err := serverSocket.WriteToUDP(packet.ToBytes(), clientUDPAddr)
 	checkErr(err)
 	fmt.Println("Connected to " + clientUDPAddr.String())
 }
@@ -71,15 +76,22 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, pathna
 	}
 	defer file.Close()
 	for {
-		data := make([]byte, 200)
-		_, err1 := file.Read(data)
-		_, err2 := serverSocket.WriteToUDP(data, clientUDPAddr)
+		var err1, err2 error
+		buf := make([]byte, server_send_len)
+		_, err1 = file.Read(buf)
 		if err1 == io.EOF {
-			//serverSocket.WriteToUDP([]byte("end"), clientUDPAddr)
+			packet := models.NewPacket(byte(0), byte(0), byte(1), buf)
+			_, err2 = serverSocket.WriteToUDP(packet.ToBytes(), clientUDPAddr)
+			fmt.Println("Write Length:"+strconv.Itoa(int(packet.Length)))
+			if err2 != nil {
+				fmt.Println(err2)
+			}
 			fmt.Printf("Finished to download the file %s.\n", file.Name())
 			break
 		}
-
+		packet := models.NewPacket(byte(0), byte(0), byte(0), buf)
+		_, err2 = serverSocket.WriteToUDP(packet.ToBytes(), clientUDPAddr)
+		fmt.Println("Write Length:"+strconv.Itoa(int(packet.Length)))
 		if err1 != nil {
 			fmt.Println(err1)
 		}

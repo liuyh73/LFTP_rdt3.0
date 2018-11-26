@@ -20,7 +20,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/liuyh73/ftp/LFTP/config"
+	"github.com/liuyh73/LFTP/LFTP/config"
 	"github.com/spf13/cobra"
 )
 
@@ -45,7 +45,7 @@ var connectCmd = &cobra.Command{
 		_, err = clientSocket.Write([]byte("conn: "))
 		checkErr(err)
 		// 读取服务器传回的数据
-		res := make([]byte, config.SERVER_RECV_LEN)
+		res := make([]byte, config.CLIENT_RECV_LEN)
 		_, err = clientSocket.Read(res)
 		checkErr(err)
 		resStr := string(res[:bytes.IndexByte(res, 0)])

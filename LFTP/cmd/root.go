@@ -15,13 +15,13 @@
 package cmd
 
 import (
-	"bytes"
+	"github.com/liuyh73/LFTP/LFTP/models"
 	"fmt"
 	"net"
 	"os"
 	"time"
 
-	"github.com/liuyh73/ftp/LFTP/config"
+	"github.com/liuyh73/LFTP/LFTP/config"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -111,15 +111,20 @@ func connectToServer() bool {
 	// 设置等待响应时间
 	clientSocket.SetDeadline(time.Now().Add(5 * time.Second))
 	// 向服务器发送请求
-	_, err = clientSocket.Write([]byte("conn: "))
+
+	packetConn := models.NewPacket(byte(0), byte(0), byte(0), []byte("conn: "))
+
+	_, err = clientSocket.Write(packetConn.ToBytes())
 	checkErr(err)
 	// 读取服务器传回的数据
-	res := make([]byte, config.SERVER_RECV_LEN)
+	res := make([]byte, config.CLIENT_RECV_LEN)
 	_, err = clientSocket.Read(res)
 	checkErr(err)
-	resStr := string(res[:bytes.IndexByte(res, 0)])
-	fmt.Println(resStr)
-	if resStr == "Connected!" {
+
+	packet := &models.Packet{}
+	packet.FromBytes(res)
+	fmt.Println(string(packet.Data))
+	if string(packet.Data) == "Connected!" {
 		return true
 	}
 	return false
