@@ -6,10 +6,11 @@ import (
 )
 
 type Head struct {
-	PkgNum byte
-	ACK byte
+	PkgNum   byte
+	ACK      byte
+	Status   byte
 	Finished byte
-	Length rune
+	Length   rune
 }
 
 type Body struct {
@@ -22,10 +23,11 @@ type Packet struct {
 }
 
 // 初始化一个Packet包
-func NewPacket(pkgNum, ack, finished byte, data []byte) *Packet {
+func NewPacket(pkgNum, ack, status, finished byte, data []byte) *Packet {
 	packet := &Packet{}
 	packet.PkgNum = pkgNum
 	packet.ACK = ack
+	packet.Status = status
 	packet.Finished = finished
 	packet.Length = rune(len(data))
 	packet.Data = data
@@ -37,6 +39,7 @@ func (packet *Packet) ToBytes() []byte {
 	var bytesBuf bytes.Buffer
 	bytesBuf.WriteByte(packet.PkgNum)
 	bytesBuf.WriteByte(packet.ACK)
+	bytesBuf.WriteByte(packet.Status)
 	bytesBuf.WriteByte(packet.Finished)
 	bytesBuf.WriteRune(packet.Length)
 	bytesBuf.Write(packet.Data)
@@ -51,6 +54,8 @@ func (packet *Packet) FromBytes(buf []byte) {
 	packet.PkgNum, err = bytesBuf.ReadByte()
 	checkErr(err)
 	packet.ACK, err = bytesBuf.ReadByte()
+	checkErr(err)
+	packet.Status, err = bytesBuf.ReadByte()
 	checkErr(err)
 	packet.Finished, err = bytesBuf.ReadByte()
 	checkErr(err)

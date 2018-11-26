@@ -15,12 +15,13 @@
 package cmd
 
 import (
-	"github.com/liuyh73/LFTP/LFTP/models"
-	"strconv"
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"time"
+
+	"github.com/liuyh73/LFTP/LFTP/models"
 
 	"github.com/liuyh73/LFTP/LFTP/config"
 	"github.com/spf13/cobra"
@@ -37,7 +38,7 @@ var lgetCmd = &cobra.Command{
 		if !connectToServer() {
 			return
 		}
-		lgetPacket := models.NewPacket(byte(0), byte(0), byte(0), []byte("lget: " + lgetFile))
+		lgetPacket := models.NewPacket(byte(0), byte(0), byte(1), byte(0), []byte("lget: "+lgetFile))
 		fmt.Println(lgetPacket)
 		fmt.Println(lgetFile)
 		// 获取raddr
@@ -58,21 +59,55 @@ var lgetCmd = &cobra.Command{
 		outputFile, err := os.OpenFile(lgetFile, os.O_CREATE|os.O_TRUNC, 0600)
 		checkErr(err)
 		for {
-			buf := make([]byte, config.CLIENT_RECV_LEN)
-			packet := &models.Packet{}
-			// lenth, err = clientSocket.Read(res)
-			// length, remoteAddr *UDPAddr, err = clientSocket.ReadFromUDP(res)
-			_, err = clientSocket.Read(buf)
-			checkErr(err)
-			packet.FromBytes(buf)
-			//fmt.Println(resStr)
-			if packet.Finished == byte(1) {
-				fmt.Println("end")
+			packetRcv := &models.Packet{}
+			var packetSnd *models.Packet
+			// 等待来自下层的0
+			for {
+				buf := make([]byte, config.CLIENT_RECV_LEN)
+				_, err = clientSocket.Read(buf)
+				checkErr(err)
+				packetRcv.FromBytes(buf)
+				if packetRcv.PkgNum == byte(0) {
+					// 收到下层的0
+					break
+				} else if packetRcv.PkgNum == byte(1) {
+					// 收到下层的1 或者 数据包校验和输错
+					packetSnd = models.NewPacket(byte(0), byte(1), byte(1), byte(0), []byte{})
+					clientSocket.Write(packetSnd.ToBytes())
+				}
+			}
+			// 收到下层的0，读取收到的数据包
+			if WriteDataToFile(outputFile, packetRcv) {
 				break
 			}
-			length, err := outputFile.Write(packet.Data)
-			fmt.Println("Read lenth: "+strconv.Itoa(length))
-			checkErr(err)
+
+			// 发送数据包确认ACK 0
+			packetSnd = models.NewPacket(byte(0), byte(0), byte(1), byte(0), []byte{})
+			clientSocket.Write(packetSnd.ToBytes())
+
+			// 等待来自下层的1
+			for {
+				buf := make([]byte, config.CLIENT_RECV_LEN)
+				_, err = clientSocket.Read(buf)
+				checkErr(err)
+				packetRcv.FromBytes(buf)
+				if packetRcv.PkgNum == byte(1) {
+					// 收到下层的1
+					break
+				} else if packetRcv.PkgNum == byte(0) {
+					// 收到下层的0 或者 数据包校验和输错
+					packetSnd = models.NewPacket(byte(0), byte(0), byte(1), byte(0), []byte{})
+					clientSocket.Write(packetSnd.ToBytes())
+				}
+			}
+
+			// 收到下层的1，读取收到的数据包
+			if WriteDataToFile(outputFile, packetRcv) {
+				break
+			}
+			// 发送数据包确认ACK 1
+			packetSnd = models.NewPacket(byte(0), byte(1), byte(1), byte(0), []byte{})
+			clientSocket.Write(packetSnd.ToBytes())
 		}
 		fmt.Printf("Finished to download the file %s.\n", lgetFile)
 	},
@@ -93,4 +128,18 @@ func init() {
 	lgetCmd.Flags().StringVarP(&lgetFile, "file", "f", "", "lgetfile filename")
 	lgetCmd.Flags().StringVarP(&host, "host", "H", config.SERVER_IP, "Server host")
 	lgetCmd.Flags().StringVarP(&port, "port", "P", config.SERVER_PORT, "Server port")
+}
+
+func WriteDataToFile(outputFile *os.File, packetRcv *models.Packet) bool {
+	// 收到下层的0或1，读取收到的数据包
+	length, err := outputFile.Write(packetRcv.Data)
+	fmt.Println("Read lenth: " + strconv.Itoa(length))
+	checkErr(err)
+
+	// 传输完成，判断是否传输完成
+	if packetRcv.Finished == byte(1) {
+		fmt.Println("end")
+		return true
+	}
+	return false
 }
