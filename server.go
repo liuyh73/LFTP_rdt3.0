@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	server_ip       = "127.0.0.1"
+	server_ip       = "192.168.137.234"
 	server_port     = "8808"
 	server_send_len = 1992
 	server_recv_len = 2000
@@ -88,19 +88,16 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, pathna
 		var sndpkt *models.Packet
 		timer := time.NewTimer(5 * time.Second)
 		quit:= make(chan int)
+		finished := 0
 		var wg sync.WaitGroup
 		// 发送packet 0
 		buf := make([]byte, server_send_len)
 		_, err1 := file.Read(buf)
 		if err1 == io.EOF {
-			sndpkt = models.NewPacket(byte(0), byte(0), byte(1), byte(1), buf)
-			udt_send(serverSocket, sndpkt, clientUDPAddr)
-			// fmt.Printf("Finished to download the file %s.\n", file.Name())
-			timer.Reset(5)
-			break
+			finished = 1
 		}
 		fmt.Println("发送数据包0")
-		sndpkt = models.NewPacket(byte(0), byte(0), byte(1), byte(0), buf)
+		sndpkt = models.NewPacket(byte(0), byte(0), byte(1), byte(finished), buf)
 		udt_send(serverSocket, sndpkt, clientUDPAddr)
 		timer.Reset(5)
 
@@ -144,13 +141,10 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, pathna
 		buf = make([]byte, server_send_len)
 		_, err1 = file.Read(buf)
 		if err1 == io.EOF {
-			sndpkt = models.NewPacket(byte(1), byte(0), byte(1), byte(1), buf)
-			udt_send(serverSocket, sndpkt, clientUDPAddr)
-			timer.Reset(5)
-			break
+			finished = 1
 		}
 		fmt.Println("发送数据包1")
-		sndpkt = models.NewPacket(byte(1), byte(0), byte(1), byte(0), buf)
+		sndpkt = models.NewPacket(byte(1), byte(0), byte(1), byte(finished), buf)
 		udt_send(serverSocket, sndpkt, clientUDPAddr)
 		timer.Reset(5)
 

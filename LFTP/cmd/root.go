@@ -113,7 +113,7 @@ func connectToServer() bool {
 	clientSocket.SetDeadline(time.Now().Add(5 * time.Second))
 	// 向服务器发送请求
 
-	packetConn := models.NewPacket(byte(0), byte(0), byte(1), byte(0), []byte("conn: "))
+	packetConn := models.NewPacket(byte(0), byte(0), byte(1), byte(0), []byte("conn: "+host))
 
 	_, err = clientSocket.Write(packetConn.ToBytes())
 	checkErr(err)
