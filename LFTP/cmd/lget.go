@@ -19,7 +19,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/liuyh73/LFTP/LFTP/models"
 
@@ -39,7 +38,7 @@ var lgetCmd = &cobra.Command{
 			return
 		}
 		lgetPacket := models.NewPacket(byte(0), byte(0), byte(1), byte(0), []byte("lget: "+lgetFile))
-		fmt.Println(lgetPacket)
+		// fmt.Println(lgetPacket)
 		fmt.Println(lgetFile)
 		// 获取raddr
 		serverAddr := host + ":" + port
@@ -51,7 +50,7 @@ var lgetCmd = &cobra.Command{
 		checkErr(err)
 		defer clientSocket.Close()
 		// 设置等待响应时间
-		clientSocket.SetDeadline(time.Now().Add(10 * time.Second))
+		// clientSocket.SetDeadline(time.Now().Add(10 * time.Second))
 		// 向服务器发送请求
 		_, err = clientSocket.Write(lgetPacket.ToBytes())
 		checkErr(err)
@@ -77,7 +76,7 @@ var lgetCmd = &cobra.Command{
 				}
 			}
 			// 收到下层的0，读取收到的数据包
-			if WriteDataToFile(outputFile, packetRcv) {
+			if WriteDataToFile(clientSocket, outputFile, packetRcv) {
 				break
 			}
 
@@ -102,7 +101,7 @@ var lgetCmd = &cobra.Command{
 			}
 
 			// 收到下层的1，读取收到的数据包
-			if WriteDataToFile(outputFile, packetRcv) {
+			if WriteDataToFile(clientSocket, outputFile, packetRcv) {
 				break
 			}
 			// 发送数据包确认ACK 1
@@ -130,7 +129,7 @@ func init() {
 	lgetCmd.Flags().StringVarP(&port, "port", "P", config.SERVER_PORT, "Server port")
 }
 
-func WriteDataToFile(outputFile *os.File, packetRcv *models.Packet) bool {
+func WriteDataToFile(clientSocket *net.UDPConn, outputFile *os.File, packetRcv *models.Packet) bool {
 	// 收到下层的0或1，读取收到的数据包
 	length, err := outputFile.Write(packetRcv.Data)
 	fmt.Println("Read lenth: " + strconv.Itoa(length))
@@ -139,6 +138,8 @@ func WriteDataToFile(outputFile *os.File, packetRcv *models.Packet) bool {
 	// 传输完成，判断是否传输完成
 	if packetRcv.Finished == byte(1) {
 		fmt.Println("end")
+		packetSnd := models.NewPacket(byte(0), byte(0), byte(1), byte(1), []byte{})
+		clientSocket.Write(packetSnd.ToBytes())
 		return true
 	}
 	return false

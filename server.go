@@ -5,9 +5,11 @@ import (
 	"io"
 	"log"
 	"net"
+	"time"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/liuyh73/LFTP/LFTP/models"
 )
@@ -80,77 +82,113 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, pathna
 		fmt.Fprintf(os.Stderr, "An error occurred on opening the inputfile: %s\nDoes the file exist?\n", pathname)
 		return
 	}
+
 	for {
-		var err1, err2 error
-		packetRcv := &models.Packet{}
-		var packetSnd *models.Packet
+		rcvpkt := &models.Packet{}
+		var sndpkt *models.Packet
+		timer := time.NewTimer(5 * time.Second)
+		quit:= make(chan int)
+		var wg sync.WaitGroup
 		// 发送packet 0
 		buf := make([]byte, server_send_len)
-		_, err1 = file.Read(buf)
+		_, err1 := file.Read(buf)
 		if err1 == io.EOF {
-			packetSnd = models.NewPacket(byte(0), byte(0), byte(1), byte(1), buf)
-			_, err2 = serverSocket.WriteToUDP(packetSnd.ToBytes(), clientUDPAddr)
-			fmt.Println("Write Length:" + strconv.Itoa(int(packetSnd.Length)))
-			checkErr(err2)
-			fmt.Printf("Finished to download the file %s.\n", file.Name())
-			// 设置定时器
+			sndpkt = models.NewPacket(byte(0), byte(0), byte(1), byte(1), buf)
+			udt_send(serverSocket, sndpkt, clientUDPAddr)
+			// fmt.Printf("Finished to download the file %s.\n", file.Name())
+			timer.Reset(5)
 			break
 		}
+		fmt.Println("发送数据包0")
+		sndpkt = models.NewPacket(byte(0), byte(0), byte(1), byte(0), buf)
+		udt_send(serverSocket, sndpkt, clientUDPAddr)
+		timer.Reset(5)
 
-		packetSnd = models.NewPacket(byte(0), byte(0), byte(1), byte(1), buf)
-		_, err2 = serverSocket.WriteToUDP(packetSnd.ToBytes(), clientUDPAddr)
-		fmt.Println("Write Length:" + strconv.Itoa(int(packetSnd.Length)))
-		checkErr(err2)
-		// 设置定时器
-
+		wg.Add(1)
+		// 如果超时，重新发送数据包sndpkt, 设置定时器
+		go func(){
+			defer wg.Done()
+			for {
+				select{
+				case <- timer.C:
+					fmt.Println("发送数据包0超时")
+					udt_send(serverSocket, sndpkt, clientUDPAddr)
+					timer.Reset(5)
+				case <- quit:
+					return
+				}
+			}
+		}()
 		// 等待ACK 0
 		for {
-			buf := make([]byte, server_recv_len)
-			_, err1 = serverSocket.Read(buf)
-			checkErr(err1)
-			packetRcv.FromBytes(buf)
-			if packetRcv.ACK == 0 {
+			rcvpkt.FromBytes(rdt_rcv(serverSocket))
+			if rcvpkt.ACK == 0 {
+				fmt.Println("接收ACK0")
 				break
 			}
-			// TODO 如果超时，重新发送数据包packetSnd, 设置定时器
 		}
-
+		quit <- 1
 		// ACK == 0
 		// 取消定时器
+		timer.Stop()
+		wg.Wait()
+
+		// 是否传输结束
+		if rcvpkt.Finished == byte(1) {
+			fmt.Printf("Finished to download the file %s.\n", file.Name())
+			break
+		}
 
 		// 等待来自上层的调用1
 		// 发送packet 1
 		buf = make([]byte, server_send_len)
 		_, err1 = file.Read(buf)
 		if err1 == io.EOF {
-			packetSnd = models.NewPacket(byte(1), byte(0), byte(1), byte(1), buf)
-			_, err2 = serverSocket.WriteToUDP(packetSnd.ToBytes(), clientUDPAddr)
-			fmt.Println("Write Length:" + strconv.Itoa(int(packetSnd.Length)))
-			checkErr(err2)
-			fmt.Printf("Finished to download the file %s.\n", file.Name())
-			// 设置定时器
+			sndpkt = models.NewPacket(byte(1), byte(0), byte(1), byte(1), buf)
+			udt_send(serverSocket, sndpkt, clientUDPAddr)
+			timer.Reset(5)
 			break
 		}
-		packetSnd = models.NewPacket(byte(1), byte(0), byte(1), byte(0), buf)
-		_, err2 = serverSocket.WriteToUDP(packetSnd.ToBytes(), clientUDPAddr)
-		fmt.Println("Write Length:" + strconv.Itoa(int(packetSnd.Length)))
-		checkErr(err2)
-		// 设置定时器
+		fmt.Println("发送数据包1")
+		sndpkt = models.NewPacket(byte(1), byte(0), byte(1), byte(0), buf)
+		udt_send(serverSocket, sndpkt, clientUDPAddr)
+		timer.Reset(5)
+
+		wg.Add(1)
+		// 如果超时，重新发送数据包sndpkt, 设置定时器
+		go func(){
+			defer wg.Done()
+			for {
+				select{
+				case <- timer.C:
+					fmt.Println("发送数据包1超时")
+					udt_send(serverSocket, sndpkt, clientUDPAddr)
+					timer.Reset(5)
+				case <- quit:
+					return
+				}
+			}
+		}()
 
 		// 等待ACK 1
 		for {
-			buf := make([]byte, server_recv_len)
-			_, err1 = serverSocket.Read(buf)
-			checkErr(err1)
-			packetRcv.FromBytes(buf)
-			if packetRcv.ACK == 1 {
+			rcvpkt.FromBytes(rdt_rcv(serverSocket))
+			if rcvpkt.ACK == 1 {
+				fmt.Println("接收ACK1")
 				break
 			}
-			// TODO 如果超时，重新发送数据包packetSnd, 设置定时器
 		}
-
+		quit <- 1
 		// ACK == 1
 		// 取消定时器
+		timer.Stop()
+		wg.Wait()
+
+		// 是否传输结束
+		if rcvpkt.Finished == byte(1) {
+			fmt.Printf("Finished to download the file %s.\n", file.Name())
+			break
+		}
 	}
 }
 
@@ -160,4 +198,17 @@ func handlePutFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr) {
 
 func handleList(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr) {
 
+}
+
+func udt_send(serverSocket *net.UDPConn, sndpkt *models.Packet, clientUDPAddr *net.UDPAddr) {
+	_, err := serverSocket.WriteToUDP(sndpkt.ToBytes(), clientUDPAddr)
+	fmt.Println("Write Length:" + strconv.Itoa(int(sndpkt.Length)))
+	checkErr(err)
+}
+
+func rdt_rcv(serverSocket *net.UDPConn) ([]byte) {
+	buf := make([]byte, server_recv_len)
+	_, err := serverSocket.Read(buf)
+	checkErr(err)
+	return buf
 }
